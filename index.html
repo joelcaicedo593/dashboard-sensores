@@ -171,18 +171,21 @@
             </div>
         </div>
 
-        <!-- Controles -->
-        <div class="controls">
-            <button id="btnConectar" onclick="conectarSerial()">
-                🔌 Conectar Puerto Serial
-            </button>
-            <button id="btnSimular" onclick="iniciarSimulacion()">
-                🎮 Modo Simulación
-            </button>
-            <button onclick="limpiarAlertas()">
-                🗑️ Limpiar Alertas
-            </button>
-        </div>
+       <!-- Controles -->
+<div class="controls">
+    <button id="btnConectar" class="btn-primary">
+        🔌 Conectar Puerto Serial
+    </button>
+    <button id="btnSimular" class="btn-simular">
+        🎮 Modo Simulación
+    </button>
+    <button onclick="limpiarAlertas()" class="btn-secondary">
+        🗑️ Limpiar Alertas
+    </button>
+    <button onclick="limpiarEventos()" class="btn-secondary">
+        🗑️ Limpiar Eventos
+    </button>
+</div>
 
         <!-- Footer -->
         <footer class="footer">
