@@ -1,5 +1,12 @@
+// ============================================
+// SISTEMA DE REGISTRO DE EVENTOS
+// ============================================
+
 // Configuración
-let datosHistoricos = [];
+let eventos = [];
+let contadorEventos = 0;
+let filtroActual = 'todos';
+let autoScroll = true;
 let chart = null;
 let simulacionActiva = false;
 let intervaloSimulacion = null;
@@ -7,13 +14,38 @@ let humedadBase = null;
 let gasBase = null;
 let contadorMuestras = 0;
 let puertoSerial = null;
+let ultimoValorHumedad = null;
+let ultimoValorGas = null;
 
-// Inicializar gráfica al cargar
+// Niveles de alerta
+const NIVELES = {
+    HUMEDAD: {
+        CRITICO_BAJO: 200,
+        ALERTA_BAJO: 300,
+        OPTIMO_MIN: 300,
+        OPTIMO_MAX: 700,
+        ALERTA_ALTO: 700,
+        CRITICO_ALTO: 800
+    },
+    GAS: {
+        NORMAL: 100,
+        ALERTA: 150,
+        CRITICO: 250
+    }
+};
+
+// Umbrales para registrar eventos
+const UMBRAL_EVENTO_HUMEDAD = 20;
+const UMBRAL_EVENTO_GAS = 15;
+
+// Inicializar
 document.addEventListener('DOMContentLoaded', function() {
     inicializarGrafica();
-    agregarAlerta('info', '💡 Sistema listo - Conecta tu Arduino o usa simulación');
+    agregarAlerta('info', '💡 Sistema de registro de eventos activado');
+    agregarEvento('Sistema', 'info', 'Sistema iniciado', 0, 0, 'NORMAL', '✅ Sistema listo');
 });
 
+// === INICIALIZAR GRÁFICA ===
 function inicializarGrafica() {
     const ctx = document.getElementById('chartSensores').getContext('2d');
     chart = new Chart(ctx, {
@@ -84,278 +116,229 @@ function inicializarGrafica() {
     });
 }
 
-// === FUNCIONES DE CONEXIÓN SERIAL ===
-async function conectarSerial() {
-    try {
-        const status = document.getElementById('statusConexion');
-        status.textContent = '⏳ Conectando...';
-        status.style.color = 'orange';
-        
-        // Solicitar puerto
-        puertoSerial = await navigator.serial.requestPort();
-        await puertoSerial.open({ baudRate: 9600 });
-        
-        status.textContent = '🟢 Conectado';
-        status.style.color = '#28a745';
-        
-        agregarAlerta('success', '✅ Conectado al puerto serial correctamente');
-        
-        // Iniciar lectura
-        leerDatosSerial();
-        
-    } catch (error) {
-        console.error('Error de conexión:', error);
-        document.getElementById('statusConexion').textContent = '🔴 Error de conexión';
-        agregarAlerta('danger', '❌ Error al conectar: ' + error.message);
+// === SISTEMA DE EVENTOS ===
+function agregarEvento(tipo, severidad, descripcion, valorAnterior, valorActual, nivel, estado) {
+    const timestamp = new Date();
+    const evento = {
+        id: ++contadorEventos,
+        timestamp: timestamp,
+        timestampStr: timestamp.toLocaleString(),
+        tipo: tipo, // 'humedad', 'gas', 'alerta', 'critico', 'sistema'
+        severidad: severidad, // 'info', 'warning', 'danger', 'success', 'critical'
+        descripcion: descripcion,
+        valorAnterior: valorAnterior,
+        valorActual: valorActual,
+        nivel: nivel,
+        estado: estado
+    };
+    
+    // Agregar al inicio (más reciente primero)
+    eventos.unshift(evento);
+    
+    // Mantener solo últimos 500 eventos
+    if (eventos.length > 500) {
+        eventos = eventos.slice(0, 500);
     }
+    
+    // Actualizar UI
+    actualizarTablaEventos();
+    actualizarResumenEventos();
+    
+    // Actualizar contador en header
+    document.getElementById('eventosRegistrados').textContent = `📝 Eventos: ${eventos.length}`;
+    
+    // Actualizar último evento
+    document.getElementById('ultimoEvento').textContent = `Último: ${evento.timestampStr}`;
+    
+    // Log en consola
+    console.log(`[${evento.timestampStr}] ${tipo.toUpperCase()} - ${descripcion}`);
 }
 
-async function leerDatosSerial() {
-    if (!puertoSerial) return;
+function actualizarTablaEventos() {
+    const tbody = document.getElementById('eventsBody');
+    const eventosFiltrados = filtrarEventosLista();
     
-    try {
-        const reader = puertoSerial.readable.getReader();
-        
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            
-            const texto = new TextDecoder().decode(value);
-            const lineas = texto.split('\n');
-            
-            for (const linea of lineas) {
-                if (linea.trim() && !linea.startsWith('=') && !linea.startsWith('---')) {
-                    procesarLinea(linea);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error leyendo datos:', error);
-        agregarAlerta('danger', '❌ Error leyendo datos serial');
-    }
-}
-
-// === PROCESAR DATOS ===
-function procesarLinea(linea) {
-    try {
-        const partes = linea.split(',');
-        if (partes.length >= 8) {
-            const datos = {
-                timestamp: partes[0],
-                fecha: partes[1],
-                humedad: parseFloat(partes[2]),
-                gas: parseFloat(partes[3]),
-                frecuencia: parseFloat(partes[4]),
-                velocidad: parseFloat(partes[5]),
-                estado_h: partes[6],
-                estado_g: partes[7]
-            };
-            
-            // Establecer base si es primera lectura
-            if (humedadBase === null && datos.humedad) {
-                humedadBase = datos.humedad;
-            }
-            if (gasBase === null && datos.gas) {
-                gasBase = datos.gas;
-            }
-            
-            contadorMuestras++;
-            actualizarDashboard(datos);
-        }
-    } catch (e) {
-        console.error('Error procesando línea:', e);
-    }
-}
-
-// === ACTUALIZAR DASHBOARD ===
-function actualizarDashboard(datos) {
-    // Actualizar valores
-    document.getElementById('humedadValor').textContent = datos.humedad.toFixed(0);
-    document.getElementById('gasValor').textContent = datos.gas.toFixed(0);
-    document.getElementById('frecuenciaValor').textContent = datos.frecuencia.toFixed(0);
-    
-    // Actualizar estados
-    const estadoH = datos.estado_h || '';
-    const estadoG = datos.estado_g || '';
-    
-    document.getElementById('humedadEstado').textContent = estadoH;
-    document.getElementById('humedadTendencia').textContent = 
-        estadoH.includes('SUBIENDO') ? '⬆' : 
-        estadoH.includes('BAJANDO') ? '⬇' : '➡';
-    
-    document.getElementById('gasEstado').textContent = estadoG;
-    document.getElementById('gasTendencia').textContent = 
-        estadoG.includes('SUBIENDO') ? '⬆' : 
-        estadoG.includes('BAJANDO') ? '⬇' : '➡';
-    
-    // Actualizar badges
-    const humedad = datos.humedad;
-    const gas = datos.gas;
-    
-    // Badge humedad
-    const badgeH = document.getElementById('humedadBadge');
-    if (humedad < 300) {
-        badgeH.textContent = '⚠️ SECO';
-        badgeH.className = 'badge badge-warning';
-    } else if (humedad > 700) {
-        badgeH.textContent = '⚠️ HÚMEDO';
-        badgeH.className = 'badge badge-warning';
-    } else {
-        badgeH.textContent = '✅ ÓPTIMO';
-        badgeH.className = 'badge badge-success';
-    }
-    
-    // Badge gas
-    const badgeG = document.getElementById('gasBadge');
-    if (gas > 150) {
-        badgeG.textContent = '💨 ¡GAS!';
-        badgeG.className = 'badge badge-danger';
-        agregarAlerta('danger', `🚨 ¡GAS DETECTADO! Valor: ${gas.toFixed(0)}`);
-    } else {
-        badgeG.textContent = '✅ NORMAL';
-        badgeG.className = 'badge badge-success';
-    }
-    
-    // Estado general
-    const estadoGeneral = document.getElementById('estadoGeneral');
-    if (gas > 150) {
-        estadoGeneral.innerHTML = '🚨 ALERTA DE GAS';
-        estadoGeneral.style.color = '#dc3545';
-        document.getElementById('alertaActiva').textContent = '🚨 ALERTA ACTIVA';
-        document.getElementById('alertaActiva').style.color = '#dc3545';
-    } else if (humedad < 300 || humedad > 700) {
-        estadoGeneral.innerHTML = '⚠️ Humedad fuera de rango';
-        estadoGeneral.style.color = '#ffc107';
-        document.getElementById('alertaActiva').textContent = '⚠️ ALERTA ACTIVA';
-        document.getElementById('alertaActiva').style.color = '#ffc107';
-    } else {
-        estadoGeneral.innerHTML = '✅ TODO NORMAL';
-        estadoGeneral.style.color = '#28a745';
-        document.getElementById('alertaActiva').textContent = '✅ Sin alertas';
-        document.getElementById('alertaActiva').style.color = '#28a745';
-    }
-    
-    // Actualizar muestras
-    document.getElementById('muestrasBadge').textContent = `Muestras: ${contadorMuestras}`;
-    
-    // Actualizar timestamp
-    const ahora = new Date();
-    document.getElementById('ultimaActualizacion').textContent = 
-        `⏰ ${ahora.toLocaleTimeString()}`;
-    
-    // Actualizar gráfica
-    actualizarGrafica(datos);
-}
-
-// === ACTUALIZAR GRÁFICA ===
-function actualizarGrafica(datos) {
-    const tiempo = new Date().toLocaleTimeString();
-    
-    chart.data.labels.push(tiempo);
-    chart.data.datasets[0].data.push(datos.humedad);
-    chart.data.datasets[1].data.push(datos.gas);
-    chart.data.datasets[2].data.push(datos.frecuencia);
-    
-    // Mantener solo 50 puntos
-    if (chart.data.labels.length > 50) {
-        chart.data.labels.shift();
-        chart.data.datasets[0].data.shift();
-        chart.data.datasets[1].data.shift();
-        chart.data.datasets[2].data.shift();
-    }
-    
-    chart.update();
-}
-
-// === MODO SIMULACIÓN ===
-function iniciarSimulacion() {
-    if (simulacionActiva) {
-        clearInterval(intervaloSimulacion);
-        simulacionActiva = false;
-        document.getElementById('btnSimular').textContent = '🎮 Modo Simulación';
-        agregarAlerta('info', '⏹️ Simulación detenida');
+    if (eventosFiltrados.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="no-events">No hay eventos que coincidan con el filtro</td></tr>`;
         return;
     }
     
-    simulacionActiva = true;
-    document.getElementById('btnSimular').textContent = '⏹️ Detener Simulación';
-    agregarAlerta('info', '🎮 Modo simulación activado');
+    let html = '';
+    eventosFiltrados.forEach(evento => {
+        const claseFila = `event-${evento.tipo}`;
+        const icono = getIconoEvento(evento.tipo);
+        const badgeNivel = getBadgeNivel(evento.nivel);
+        
+        html += `
+            <tr class="${claseFila}">
+                <td>${evento.id}</td>
+                <td>${evento.timestampStr}</td>
+                <td>${icono} ${evento.tipo.charAt(0).toUpperCase() + evento.tipo.slice(1)}</td>
+                <td>${evento.severidad}</td>
+                <td>${evento.valorAnterior !== null ? evento.valorAnterior : '-'}</td>
+                <td>${evento.valorActual !== null ? evento.valorActual : '-'}</td>
+                <td>${evento.valorAnterior !== null && evento.valorActual !== null ? (evento.valorActual - evento.valorAnterior) : '-'}</td>
+                <td>${badgeNivel}</td>
+                <td>${evento.estado}</td>
+            </tr>
+        `;
+    });
     
-    let humedad = 500;
-    let gas = 100;
-    let subiendoH = true;
-    let subiendoG = true;
+    tbody.innerHTML = html;
     
-    intervaloSimulacion = setInterval(() => {
-        // Simular cambios
-        if (subiendoH) {
-            humedad += Math.random() * 30;
-            if (humedad > 800) subiendoH = false;
-        } else {
-            humedad -= Math.random() * 30;
-            if (humedad < 200) subiendoH = true;
-        }
-        
-        if (subiendoG) {
-            gas += Math.random() * 20;
-            if (gas > 250) subiendoG = false;
-        } else {
-            gas -= Math.random() * 20;
-            if (gas < 50) subiendoG = true;
-        }
-        
-        // Crear datos simulados
-        const datos = {
-            humedad: Math.round(humedad),
-            gas: Math.round(gas),
-            frecuencia: Math.round(1000 + (gas / 1023) * 4000),
-            estado_h: subiendoH ? '⬆ SUBIENDO' : '⬇ BAJANDO',
-            estado_g: subiendoG ? '⬆ SUBIENDO' : '⬇ BAJANDO'
-        };
-        
-        // Establecer base si es primera simulación
-        if (humedadBase === null) {
-            humedadBase = datos.humedad;
-        }
-        if (gasBase === null) {
-            gasBase = datos.gas;
-        }
-        
-        contadorMuestras++;
-        actualizarDashboard(datos);
-        
-    }, 1500);
-}
-
-// === ALERTAS ===
-function agregarAlerta(tipo, mensaje) {
-    const lista = document.getElementById('alertasLista');
-    const alerta = document.createElement('div');
-    alerta.className = `alert-item ${tipo}`;
-    const timestamp = new Date().toLocaleTimeString();
-    alerta.innerHTML = `
-        <strong>${timestamp}</strong> - ${mensaje}
-    `;
-    lista.insertBefore(alerta, lista.firstChild);
-    
-    // Mantener solo 20 alertas
-    while (lista.children.length > 20) {
-        lista.removeChild(lista.lastChild);
+    // Auto-scroll si está activado
+    if (autoScroll) {
+        const wrapper = document.querySelector('.events-table-wrapper');
+        wrapper.scrollTop = 0;
     }
 }
 
-function limpiarAlertas() {
-    const lista = document.getElementById('alertasLista');
-    while (lista.children.length > 1) {
-        lista.removeChild(lista.lastChild);
-    }
-    agregarAlerta('info', '🗑️ Alertas limpiadas');
+function filtrarEventosLista() {
+    if (filtroActual === 'todos') return eventos;
+    if (filtroActual === 'humedad') return eventos.filter(e => e.tipo === 'humedad');
+    if (filtroActual === 'gas') return eventos.filter(e => e.tipo === 'gas');
+    if (filtroActual === 'alerta') return eventos.filter(e => e.tipo === 'alerta');
+    if (filtroActual === 'critico') return eventos.filter(e => e.tipo === 'critico');
+    return eventos;
 }
 
-// === COMANDOS DESDE CONSOLA ===
-console.log('=== DASHBOARD SENSORES ===');
-console.log('Comandos disponibles:');
-console.log('  conectarSerial() - Conectar puerto serial');
-console.log('  iniciarSimulacion() - Iniciar modo simulación');
-console.log('  limpiarAlertas() - Limpiar alertas');
-console.log('========================');
+function filtrarEventos(filtro) {
+    filtroActual = filtro;
+    
+    // Actualizar botones activos
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.filter === filtro) {
+            btn.classList.add('active');
+        }
+    });
+    
+    actualizarTablaEventos();
+}
+
+function getIconoEvento(tipo) {
+    const iconos = {
+        'humedad': '💧',
+        'gas': '🌫️',
+        'alerta': '🔔',
+        'critico': '🚨',
+        'sistema': 'ℹ️',
+        'info': 'ℹ️'
+    };
+    return iconos[tipo] || '📌';
+}
+
+function getBadgeNivel(nivel) {
+    const badges = {
+        'NORMAL': '<span class="badge badge-success">✅ NORMAL</span>',
+        'ALERTA': '<span class="badge badge-warning">⚠️ ALERTA</span>',
+        'CRITICO': '<span class="badge badge-danger">🚨 CRÍTICO</span>',
+        'OPTIMO': '<span class="badge badge-success">✅ ÓPTIMO</span>',
+        'SECO': '<span class="badge badge-warning">💧 SECO</span>',
+        'HUMEDO': '<span class="badge badge-warning">💧 HÚMEDO</span>'
+    };
+    return badges[nivel] || `<span class="badge badge-info">${nivel}</span>`;
+}
+
+function actualizarResumenEventos() {
+    const total = eventos.length;
+    const alertas = eventos.filter(e => e.tipo === 'alerta' || e.tipo === 'critico').length;
+    const humedad = eventos.filter(e => e.tipo === 'humedad').length;
+    const gas = eventos.filter(e => e.tipo === 'gas').length;
+    const criticos = eventos.filter(e => e.tipo === 'critico').length;
+    
+    document.getElementById('totalEventos').textContent = total;
+    document.getElementById('totalAlertas').textContent = alertas;
+    document.getElementById('totalHumedad').textContent = humedad;
+    document.getElementById('totalGas').textContent = gas;
+    document.getElementById('totalCriticos').textContent = criticos;
+}
+
+function limpiarEventos() {
+    if (confirm('¿Seguro que quieres eliminar todos los eventos?')) {
+        eventos = [];
+        contadorEventos = 0;
+        actualizarTablaEventos();
+        actualizarResumenEventos();
+        document.getElementById('eventosRegistrados').textContent = '📝 Eventos: 0';
+        agregarAlerta('info', '🗑️ Todos los eventos han sido eliminados');
+    }
+}
+
+function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    const btn = document.getElementById('btnAutoScroll');
+    btn.textContent = autoScroll ? '📌 Auto-scroll ON' : '📌 Auto-scroll OFF';
+    btn.style.background = autoScroll ? '#17a2b8' : '#6c757d';
+}
+
+function exportarEventos() {
+    if (eventos.length === 0) {
+        alert('No hay eventos para exportar');
+        return;
+    }
+    
+    // Crear CSV
+    let csv = 'ID,Timestamp,Tipo,Severidad,Descripcion,ValorAnterior,ValorActual,Nivel,Estado\n';
+    eventos.forEach(e => {
+        csv += `${e.id},"${e.timestampStr}",${e.tipo},${e.severidad},"${e.descripcion}",${e.valorAnterior ?? ''},${e.valorActual ?? ''},${e.nivel},"${e.estado}"\n`;
+    });
+    
+    // Descargar
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `eventos_sensores_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    agregarAlerta('success', `📥 Exportados ${eventos.length} eventos a CSV`);
+}
+
+// === DETECCIÓN DE NIVELES ===
+function determinarNivelHumedad(valor) {
+    if (valor < NIVELES.HUMEDAD.CRITICO_BAJO) return 'CRITICO';
+    if (valor < NIVELES.HUMEDAD.ALERTA_BAJO) return 'ALERTA';
+    if (valor >= NIVELES.HUMEDAD.OPTIMO_MIN && valor <= NIVELES.HUMEDAD.OPTIMO_MAX) return 'OPTIMO';
+    if (valor > NIVELES.HUMEDAD.ALERTA_ALTO) return 'ALERTA';
+    if (valor > NIVELES.HUMEDAD.CRITICO_ALTO) return 'CRITICO';
+    return 'NORMAL';
+}
+
+function determinarNivelGas(valor) {
+    if (valor > NIVELES.GAS.CRITICO) return 'CRITICO';
+    if (valor > NIVELES.GAS.ALERTA) return 'ALERTA';
+    return 'NORMAL';
+}
+
+function determinarEstadoHumedad(valor) {
+    if (valor < NIVELES.HUMEDAD.ALERTA_BAJO) return '💧 SECO';
+    if (valor > NIVELES.HUMEDAD.ALERTA_ALTO) return '💧 HÚMEDO';
+    return '✅ ÓPTIMO';
+}
+
+function determinarEstadoGas(valor) {
+    if (valor > NIVELES.GAS.CRITICO) return '🚨 CRÍTICO';
+    if (valor > NIVELES.GAS.ALERTA) return '⚠️ ALERTA';
+    return '✅ NORMAL';
+}
+
+// === PROCESAR DATOS CON REGISTRO DE EVENTOS ===
+function procesarDatosConEventos(humedad, gas) {
+    // Primera lectura - establecer base
+    if (ultimoValorHumedad === null) {
+        ultimoValorHumedad = humedad;
+        ultimoValorGas = gas;
+        if (humedadBase === null) humedadBase = humedad;
+        if (gasBase === null) gasBase = gas;
+        
+        // Registrar estado inicial
+        const nivelH = determinarNivelHumedad(humedad);
+        const nivelG = determinarNivelGas(gas);
+        const estadoH = determinarEstadoHumedad(humedad);
+        const estadoG = determinarEstadoGas(gas);
+        
+       
