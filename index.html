@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Sensores IoT</title>
+    <title>Dashboard Sensores IoT - Con Registro de Eventos</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,10 +12,11 @@
         <!-- Header -->
         <header class="header">
             <h1>🌡️ Dashboard de Sensores IoT</h1>
-            <p>Monitoreo en tiempo real de humedad y gas</p>
+            <p>Monitoreo en tiempo real con registro de eventos</p>
             <div class="status-bar">
                 <span id="statusConexion">🔴 Desconectado</span>
                 <span id="ultimaActualizacion">⏰ --</span>
+                <span id="eventosRegistrados">📝 Eventos: 0</span>
             </div>
         </header>
 
@@ -33,6 +34,7 @@
                 <div class="card-footer">
                     <span class="tendencia" id="humedadTendencia">➡</span>
                     <span id="humedadEstado">ESTABLE</span>
+                    <span class="nivel" id="humedadNivel">Nivel: --</span>
                 </div>
             </div>
 
@@ -48,6 +50,7 @@
                 <div class="card-footer">
                     <span class="tendencia" id="gasTendencia">➡</span>
                     <span id="gasEstado">ESTABLE</span>
+                    <span class="nivel" id="gasNivel">Nivel: --</span>
                 </div>
             </div>
 
@@ -76,6 +79,7 @@
                 </div>
                 <div class="card-footer">
                     <span id="alertaActiva">✅ Sin alertas</span>
+                    <span id="ultimoEvento">Último evento: --</span>
                 </div>
             </div>
         </div>
@@ -88,7 +92,76 @@
             </div>
         </div>
 
-        <!-- Alertas -->
+        <!-- Registro de Eventos -->
+        <div class="events-container">
+            <div class="events-header">
+                <h3>📝 REGISTRO DE EVENTOS</h3>
+                <div class="events-controls">
+                    <button onclick="exportarEventos()" class="btn-export">📥 Exportar CSV</button>
+                    <button onclick="limpiarEventos()" class="btn-clear">🗑️ Limpiar</button>
+                    <button onclick="toggleAutoScroll()" class="btn-scroll" id="btnAutoScroll">📌 Auto-scroll ON</button>
+                </div>
+            </div>
+            
+            <!-- Filtros de eventos -->
+            <div class="events-filters">
+                <span>Filtrar por:</span>
+                <button class="filter-btn active" onclick="filtrarEventos('todos')" data-filter="todos">Todos</button>
+                <button class="filter-btn" onclick="filtrarEventos('humedad')" data-filter="humedad">💧 Humedad</button>
+                <button class="filter-btn" onclick="filtrarEventos('gas')" data-filter="gas">🌫️ Gas</button>
+                <button class="filter-btn" onclick="filtrarEventos('alerta')" data-filter="alerta">🚨 Alertas</button>
+                <button class="filter-btn" onclick="filtrarEventos('critico')" data-filter="critico">⚠️ Crítico</button>
+            </div>
+
+            <div class="events-table-wrapper">
+                <table class="events-table" id="eventsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Timestamp</th>
+                            <th>Tipo</th>
+                            <th>Sensor</th>
+                            <th>Valor Anterior</th>
+                            <th>Valor Actual</th>
+                            <th>Cambio</th>
+                            <th>Nivel</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="eventsBody">
+                        <tr>
+                            <td colspan="9" class="no-events">Esperando eventos...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Resumen de eventos -->
+            <div class="events-summary">
+                <div class="summary-item">
+                    <span class="label">Total eventos:</span>
+                    <span class="value" id="totalEventos">0</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Alertas:</span>
+                    <span class="value" id="totalAlertas">0</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Cambios humedad:</span>
+                    <span class="value" id="totalHumedad">0</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Cambios gas:</span>
+                    <span class="value" id="totalGas">0</span>
+                </div>
+                <div class="summary-item">
+                    <span class="label">Eventos críticos:</span>
+                    <span class="value" id="totalCriticos">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alertas en tiempo real -->
         <div class="alerts-container">
             <h3>🔔 Alertas del Sistema</h3>
             <div id="alertasLista">
@@ -98,7 +171,7 @@
             </div>
         </div>
 
-        <!-- Botón de conexión -->
+        <!-- Controles -->
         <div class="controls">
             <button id="btnConectar" onclick="conectarSerial()">
                 🔌 Conectar Puerto Serial
@@ -114,7 +187,7 @@
         <!-- Footer -->
         <footer class="footer">
             <p>📌 Conecta tu Arduino y selecciona el puerto serial</p>
-            <p>💡 Usa Web Serial API - Compatible con Chrome/Edge</p>
+            <p>💡 Los eventos se registran automáticamente con timestamp y nivel</p>
         </footer>
     </div>
 
