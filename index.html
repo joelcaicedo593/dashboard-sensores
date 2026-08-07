@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Sensores IoT</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🌡️ Dashboard de Sensores IoT</h1>
+            <p>Monitoreo en tiempo real de humedad y gas</p>
+            <div class="status-bar">
+                <span id="statusConexion">🔴 Desconectado</span>
+                <span id="ultimaActualizacion">⏰ --</span>
+            </div>
+        </header>
+
+        <!-- Cards de estado -->
+        <div class="grid-cards">
+            <div class="card card-humedad">
+                <div class="card-header">
+                    <span class="icon">💧</span>
+                    <h3>Humedad</h3>
+                </div>
+                <div class="card-value" id="humedadValor">--</div>
+                <div class="card-status">
+                    <span class="badge" id="humedadBadge">Esperando datos...</span>
+                </div>
+                <div class="card-footer">
+                    <span class="tendencia" id="humedadTendencia">➡</span>
+                    <span id="humedadEstado">ESTABLE</span>
+                </div>
+            </div>
+
+            <div class="card card-gas">
+                <div class="card-header">
+                    <span class="icon">🌫️</span>
+                    <h3>Gas</h3>
+                </div>
+                <div class="card-value" id="gasValor">--</div>
+                <div class="card-status">
+                    <span class="badge" id="gasBadge">Esperando datos...</span>
+                </div>
+                <div class="card-footer">
+                    <span class="tendencia" id="gasTendencia">➡</span>
+                    <span id="gasEstado">ESTABLE</span>
+                </div>
+            </div>
+
+            <div class="card card-frecuencia">
+                <div class="card-header">
+                    <span class="icon">🎵</span>
+                    <h3>Frecuencia</h3>
+                </div>
+                <div class="card-value" id="frecuenciaValor">--</div>
+                <div class="card-status">
+                    <span class="badge">Hz</span>
+                </div>
+                <div class="card-footer">
+                    <span>📊 Activo</span>
+                </div>
+            </div>
+
+            <div class="card card-estado">
+                <div class="card-header">
+                    <span class="icon">📊</span>
+                    <h3>Estado General</h3>
+                </div>
+                <div class="card-value" id="estadoGeneral" style="font-size: 1.2em;">--</div>
+                <div class="card-status">
+                    <span class="badge" id="muestrasBadge">Muestras: 0</span>
+                </div>
+                <div class="card-footer">
+                    <span id="alertaActiva">✅ Sin alertas</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráficas -->
+        <div class="graph-container">
+            <h3>📈 Historial de Datos</h3>
+            <div class="chart-wrapper">
+                <canvas id="chartSensores"></canvas>
+            </div>
+        </div>
+
+        <!-- Alertas -->
+        <div class="alerts-container">
+            <h3>🔔 Alertas del Sistema</h3>
+            <div id="alertasLista">
+                <div class="alert-item success">
+                    ✅ Sistema iniciado correctamente
+                </div>
+            </div>
+        </div>
+
+        <!-- Botón de conexión -->
+        <div class="controls">
+            <button id="btnConectar" onclick="conectarSerial()">
+                🔌 Conectar Puerto Serial
+            </button>
+            <button id="btnSimular" onclick="iniciarSimulacion()">
+                🎮 Modo Simulación
+            </button>
+            <button onclick="limpiarAlertas()">
+                🗑️ Limpiar Alertas
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>📌 Conecta tu Arduino y selecciona el puerto serial</p>
+            <p>💡 Usa Web Serial API - Compatible con Chrome/Edge</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
